@@ -2,7 +2,9 @@ use godot::prelude::*;
 
 struct MiniFantasySurvival;
 
+mod components;
 mod enemy;
+mod managers;
 mod player;
 
 #[gdextension]

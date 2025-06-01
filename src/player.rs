@@ -1,18 +1,30 @@
 use godot::classes::{
-    AnimatedSprite2D, AnimationTree, Area2D, CharacterBody2D, CollisionPolygon2D, IArea2D,
-    ICharacterBody2D,
+    AnimatedSprite2D, AnimationTree, Area2D, CharacterBody2D, CollisionPolygon2D, CollisionShape2D,
+    IArea2D, ICharacterBody2D,
 };
 use godot::prelude::*;
 
+const MOVEMENT_BLEND_PROPS: [&str; 4] = [
+    "parameters/MainSM/Walking/blend_position",
+    "parameters/MainSM/Running/blend_position",
+    "parameters/MainSM/Sitting Down/blend_position",
+    "parameters/MainSM/Idle/blend_position",
+];
+
 #[derive(GodotClass)]
 #[class(base=CharacterBody2D)]
-struct Player {
+pub struct Player {
     base: Base<CharacterBody2D>,
     facing: Facing8,
     sprite: OnReady<Gd<AnimatedSprite2D>>,
     animation_tree: OnReady<Gd<AnimationTree>>,
     attack_state: AttackState,
-    attack_area: OnReady<Gd<AttackArea>>,
+    attack: OnReady<Gd<Node2D>>,
+    attack_pivot: OnReady<Gd<Node2D>>,
+    #[export]
+    attack_damage: i64,
+    #[export]
+    movement_state: MovementState,
     #[export]
     debug: bool,
 }
@@ -24,6 +36,15 @@ enum AttackState {
     NotAttacking,
 }
 
+#[derive(GodotConvert, Var, Export, Default, Debug, Clone, Copy)]
+#[godot(via = GString)]
+pub enum MovementState {
+    #[default]
+    Idle,
+    Walking,
+    Running,
+}
+
 #[godot_api]
 impl ICharacterBody2D for Player {
     fn init(base: Base<CharacterBody2D>) -> Self {
@@ -33,17 +54,21 @@ impl ICharacterBody2D for Player {
             sprite: OnReady::node("AnimatedSprite2D"),
             animation_tree: OnReady::node("AnimationTree"),
             attack_state: AttackState::default(),
-            attack_area: OnReady::node("AttackArea"),
+            //attack_manager: OnReady::node("AttackManager"),
+            attack: OnReady::node("AttackPivot/Attack"),
+            attack_pivot: OnReady::node("AttackPivot"),
+            attack_damage: 50,
+            movement_state: MovementState::default(),
             debug: false,
         }
     }
 
     fn ready(&mut self) {
-        // Init AnimatedSprite2D
-        let on_animation_finished = self.base_mut().callable("on_sprite_animation_finished");
+        let stop_attack = self.base().callable("stop_attack");
+        self.attack.connect("attack_finished", &stop_attack);
 
-        self.sprite
-            .connect("animation_finished", &on_animation_finished);
+        let attack_hit_body = self.base().callable("attack_hit_body");
+        self.attack.connect("hit_body", &attack_hit_body);
 
         // Init Debug Label
         let label = self
@@ -71,10 +96,69 @@ impl ICharacterBody2D for Player {
     }
 
     fn physics_process(&mut self, _delta: f64) {
-        let input = Input::singleton();
-        let speed = 200.0;
-        let mut velocity = Vector2::ZERO;
+        let input = self.handle_input();
 
+        self.movement_state = if input.velocity != Vector2::ZERO {
+            if input.run_held {
+                MovementState::Running
+            } else {
+                MovementState::Walking
+            }
+        } else {
+            MovementState::Idle
+        };
+
+        let speed = match self.movement_state {
+            MovementState::Idle => 0.0,
+            MovementState::Walking => 100.0,
+            MovementState::Running => 200.0,
+        };
+
+        self.update_facing(input.velocity);
+        // TODO: Update collision shape based on facing direction.
+
+        let not_attacking = matches!(self.attack_state, AttackState::NotAttacking);
+        if not_attacking {
+            // self.sprite.set_animation(animation_name.as_str());
+
+            if let Some(direction) = input.attack {
+                self.start_attack(direction);
+            }
+        }
+
+        if let Some(velocity) = input.velocity.try_normalized() {
+            // Don't update facing if velocity is zero.
+            for property in MOVEMENT_BLEND_PROPS {
+                self.animation_tree.set(property, &Variant::from(velocity));
+            }
+        }
+
+        let mut base = self.base_mut();
+        base.set_velocity(input.velocity.normalized_or_zero() * speed);
+        base.move_and_slide();
+    }
+}
+
+#[godot_api]
+impl Player {
+    #[func]
+    fn stop_attack(&mut self) {
+        self.stop_attack_();
+    }
+    #[func]
+    fn attack_hit_body(&mut self, body: Gd<Node2D>) {
+        godot_print!("Hit body: {:?}", body);
+        if let Ok(mut enemy) = body.try_cast::<crate::enemy::Enemy>() {
+            godot_print!("Hit enemy: {:?}", enemy);
+            enemy.bind_mut().take_damage(self.attack_damage);
+        }
+    }
+}
+
+impl Player {
+    fn handle_input(&mut self) -> InputResult {
+        let mut velocity = Vector2::ZERO;
+        let input = Input::singleton();
         if input.is_action_pressed("player_right") {
             velocity.x += 1.0;
         }
@@ -87,72 +171,43 @@ impl ICharacterBody2D for Player {
         if input.is_action_pressed("player_up") {
             velocity.y -= 1.0;
         }
-
-        self.update_facing(velocity);
-
-        let animation_name = {
-            let base = if velocity == Vector2::ZERO {
-                "idle"
-            } else {
-                "walking"
-            };
-            // TODO(jonty): Mildly sad about hot-loop string allocation/concat here.
-            format!("{}_{}", base, self.facing.to_animation_name())
-        };
-        let not_attacking = matches!(self.attack_state, AttackState::NotAttacking);
-        if not_attacking {
-            // self.sprite.set_animation(animation_name.as_str());
-
-            if input.is_action_just_pressed("player_action") {
-                self.start_attack();
+        let attack = match input.is_action_just_pressed("player_action") {
+            true => {
+                // This assumes player_action is mouse
+                let direction = Facing8::from_any_vector(
+                    (self.base().get_global_mouse_position() - self.base().get_global_position())
+                        .normalized_or_zero(),
+                );
+                Some(direction)
             }
-        }
+            false => None,
+        };
 
-        self.animation_tree.set(
-            "parameters/MainSM/Idle/blend_position",
-            &Variant::from(velocity.normalized_or_zero()),
-        );
-        self.animation_tree.set(
-            "parameters/MainSM/Running/blend_position",
-            &Variant::from(velocity.normalized_or_zero()),
-        );
-        self.animation_tree.set(
-            "parameters/MainSM/Walking/blend_position",
-            &Variant::from(velocity.normalized_or_zero()),
-        );
-
-        let mut base = self.base_mut();
-        base.set_velocity(velocity.normalized_or_zero() * speed);
-        base.move_and_slide();
+        let run_held = input.is_action_pressed("player_run");
+        InputResult::new(velocity, attack, run_held)
     }
-}
-
-#[godot_api]
-impl Player {
-    #[func]
-    fn on_sprite_animation_finished(&mut self) {
-        godot_print!("Animation finished.");
-        self.stop_attack();
-    }
-}
-
-impl Player {
     fn update_facing(&mut self, velocity: Vector2) {
         if velocity != Vector2::ZERO {
             self.facing = Facing8::from_vector(velocity);
+            if let Some(mut shape) = self
+                .base()
+                .try_get_node_as::<CollisionShape2D>("CollisionShape2D")
+            {
+                shape.set_rotation_degrees(self.facing.to_rotation());
+            }
         }
     }
 
-    fn start_attack(&mut self) {
-        let attack_animation = format!("attack_{}", self.facing.to_facing4().to_animation_name());
-        // self.sprite.set_animation(attack_animation.as_str());
-        self.attack_area.bind_mut().enable(self.facing);
-        self.attack_state = AttackState::Attacking(self.facing);
+    fn start_attack(&mut self, direction: Facing8) {
+        self.attack_state = AttackState::Attacking(direction);
+        self.attack_pivot
+            .set_rotation_degrees(direction.to_rotation());
+        self.attack.call("start", &[]);
     }
 
-    fn stop_attack(&mut self) {
+    fn stop_attack_(&mut self) {
+        godot_print!("Stopping attack.");
         self.attack_state = AttackState::NotAttacking;
-        self.attack_area.bind_mut().disable();
         self.sprite.play();
     }
 }
@@ -193,6 +248,25 @@ impl Facing8 {
             (x, y) if x < 0.0 && y < 0.0 => Self::UpLeft,
             (x, y) if x > 0.0 && y < 0.0 => Self::UpRight,
             _ => Self::default(),
+        }
+    }
+
+    fn from_any_vector(vector: Vector2) -> Self {
+        let angle = vector.y.atan2(vector.x); // angle in radians
+        let angle_deg = angle.to_degrees();
+        let angle_deg = (angle_deg + 360.0) % 360.0; // normalize to [0, 360)
+
+        // Divide the circle into 8 sectors (each 45 degrees)
+        match angle_deg {
+            a if a >= 337.5 || a < 22.5 => Facing8::Right,
+            a if a >= 22.5 && a < 67.5 => Facing8::DownRight,
+            a if a >= 67.5 && a < 112.5 => Facing8::Down,
+            a if a >= 112.5 && a < 157.5 => Facing8::DownLeft,
+            a if a >= 157.5 && a < 202.5 => Facing8::Left,
+            a if a >= 202.5 && a < 247.5 => Facing8::UpLeft,
+            a if a >= 247.5 && a < 292.5 => Facing8::Up,
+            a if a >= 292.5 && a < 337.5 => Facing8::UpRight,
+            _ => unreachable!(),
         }
     }
 
@@ -254,42 +328,17 @@ impl Facing4 {
     }
 }
 
-#[derive(GodotClass)]
-#[class(base=Area2D)]
-struct AttackArea {
-    base: Base<Area2D>,
-    segment: OnReady<Gd<CollisionPolygon2D>>,
+struct InputResult {
+    velocity: Vector2,
+    attack: Option<Facing8>,
+    run_held: bool,
 }
-
-#[godot_api]
-impl IArea2D for AttackArea {
-    fn init(base: Base<Area2D>) -> Self {
+impl InputResult {
+    fn new(velocity: Vector2, attack: Option<Facing8>, run_held: bool) -> Self {
         Self {
-            base,
-            segment: OnReady::node("AttackSegment"),
+            velocity,
+            attack,
+            run_held,
         }
-    }
-    fn ready(&mut self) {
-        self.segment.set_disabled(true);
-        let on_area_entered = self.base_mut().callable("on_area_entered");
-        self.base_mut().connect("body_entered", &on_area_entered);
-    }
-}
-
-#[godot_api]
-impl AttackArea {
-    #[func]
-    fn on_area_entered(&mut self, body: Gd<Node2D>) {
-        godot_print!("Entered attack area. {:?}", body);
-    }
-}
-impl AttackArea {
-    fn enable(&mut self, facing: Facing8) {
-        self.segment.set_rotation_degrees(facing.to_rotation());
-        self.segment.set_disabled(false);
-    }
-
-    fn disable(&mut self) {
-        self.segment.set_disabled(true);
     }
 }

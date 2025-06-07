@@ -39,12 +39,9 @@ impl INode2D for AttackManager {
     }
 
     fn process(&mut self, _delta: f64) {
-        match self.handle_input() {
-            Some(attack_input) => {
-                godot_print!("Attack input: {:?}", attack_input);
-                self.handle_attack(attack_input);
-            }
-            None => {}
+        if let Some(attack_input) = self.handle_input() {
+            godot_print!("Attack input: {:?}", attack_input);
+            self.handle_attack(attack_input);
         }
     }
 }

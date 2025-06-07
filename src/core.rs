@@ -38,14 +38,14 @@ impl Facing8 {
 
         // Divide the circle into 8 sectors (each 45 degrees)
         match angle_deg {
-            a if a >= 337.5 || a < 22.5 => Facing8::Right,
-            a if a >= 22.5 && a < 67.5 => Facing8::DownRight,
-            a if a >= 67.5 && a < 112.5 => Facing8::Down,
-            a if a >= 112.5 && a < 157.5 => Facing8::DownLeft,
-            a if a >= 157.5 && a < 202.5 => Facing8::Left,
-            a if a >= 202.5 && a < 247.5 => Facing8::UpLeft,
-            a if a >= 247.5 && a < 292.5 => Facing8::Up,
-            a if a >= 292.5 && a < 337.5 => Facing8::UpRight,
+            a if !(22.5..337.5).contains(&a) => Facing8::Right,
+            a if (22.5..67.5).contains(&a) => Facing8::DownRight,
+            a if (67.5..112.5).contains(&a) => Facing8::Down,
+            a if (112.5..157.5).contains(&a) => Facing8::DownLeft,
+            a if (157.5..202.5).contains(&a) => Facing8::Left,
+            a if (202.5..247.5).contains(&a) => Facing8::UpLeft,
+            a if (247.5..292.5).contains(&a) => Facing8::Up,
+            a if (292.5..337.5).contains(&a) => Facing8::UpRight,
             _ => unreachable!(),
         }
     }

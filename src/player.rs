@@ -59,12 +59,9 @@ impl ICharacterBody2D for Player {
         let label = self
             .base()
             .try_get_node_as::<godot::classes::Label>("DebugLabel");
-        match (label, self.debug) {
-            (Some(mut label), false) => {
-                godot_print!("Player debug display disabled.");
-                label.set_visible(false);
-            }
-            _ => {}
+        if let (Some(mut label), false) = (label, self.debug) {
+            godot_print!("Player debug display disabled.");
+            label.set_visible(false);
         }
     }
 
@@ -72,11 +69,8 @@ impl ICharacterBody2D for Player {
         let label = self
             .base()
             .try_get_node_as::<godot::classes::Label>("DebugLabel");
-        match (label, self.debug) {
-            (Some(mut label), true) => {
-                label.set_text(format!("{:?}", self.facing).as_str());
-            }
-            _ => {}
+        if let (Some(mut label), true) = (label, self.debug) {
+            label.set_text(format!("{:?}", self.facing).as_str());
         }
     }
 

@@ -5,7 +5,7 @@ use godot::{classes::AnimationPlayer, prelude::*};
 pub struct Health {
     base: Base<Node2D>,
     #[export]
-    target: Option<Gd<Node2D>>,
+    target: OnEditor<Gd<Node2D>>,
     #[export]
     health: i64,
     animation_player: OnReady<Gd<AnimationPlayer>>,
@@ -16,9 +16,9 @@ impl INode2D for Health {
     fn init(base: Base<Node2D>) -> Self {
         Self {
             base,
-            target: None,
+            target: OnEditor::default(),
             health: 100,
-            animation_player: OnReady::node("AnimationPlayer"),
+            animation_player: OnReady::from_node("AnimationPlayer"),
         }
     }
 
@@ -31,14 +31,7 @@ impl INode2D for Health {
 
     fn process(&mut self, _delta: f64) {
         let scale = self.base().get_scale();
-        match self.target.as_mut() {
-            Some(target) => {
-                target.set_scale(scale);
-            }
-            None => {
-                godot_print!("No target set for health component!");
-            }
-        }
+        self.target.set_scale(scale);
     }
 }
 
@@ -46,9 +39,7 @@ impl INode2D for Health {
 impl Health {
     #[func]
     pub fn stop_effect(&mut self, _animation_name: StringName) {
-        if let Some(target) = self.target.as_mut() {
-            target.set_modulate(Color::WHITE);
-        }
+        self.target.set_modulate(Color::WHITE);
     }
 
     #[signal]
@@ -61,14 +52,13 @@ impl Health {
         self.animation_player.set_current_animation("hurt");
         self.animation_player.play();
 
-        if let Some(target) = self.target.as_mut() {
-            target.set_modulate(Color::RED);
-        }
+        self.target.set_modulate(Color::RED);
 
         if self.health <= 0 {
             // Emits this signal, but actually using it in the parent results in re-entrancy issues
             // so try to use the returned dead bool instead
-            self.base_mut().emit_signal("died", &[]);
+            // self.base_mut().emit_signal("died", &[]);
+            self.signals().died().emit();
             true
         } else {
             false

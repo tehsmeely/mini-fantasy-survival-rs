@@ -1,5 +1,5 @@
 [package]
-name = "mini-fantasy-survival-rs"
+name = "purranormal-defence-rs"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,4 +7,6 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-godot = "0.2.4"
+godot = "0.3.0"
+strum = "0.27.1"
+strum_macros = "0.27.1"

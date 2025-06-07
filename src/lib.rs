@@ -1,14 +1,17 @@
 use godot::prelude::*;
 
-struct MiniFantasySurvival;
+struct PurranormalDefence;
 
+mod attack;
 mod components;
+mod core;
 mod enemy;
+mod hud;
 mod managers;
 mod player;
 
 #[gdextension]
-unsafe impl ExtensionLibrary for MiniFantasySurvival {}
+unsafe impl ExtensionLibrary for PurranormalDefence {}
 
 /*
 

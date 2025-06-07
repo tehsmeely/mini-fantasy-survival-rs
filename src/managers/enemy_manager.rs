@@ -17,8 +17,8 @@ impl INode2D for EnemyManager {
     fn init(base: Base<Node2D>) -> Self {
         Self {
             base,
-            enemies_container: OnReady::node("Enemies"),
-            drops_container: OnReady::node("Drops"),
+            enemies_container: OnReady::from_node("Enemies"),
+            drops_container: OnReady::from_node("Drops"),
             enemy_scene: None,
             drop_scene: None,
         }

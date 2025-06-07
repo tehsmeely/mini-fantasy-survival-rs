@@ -26,13 +26,13 @@ impl IStaticBody2D for Enemy {
     fn init(base: Base<StaticBody2D>) -> Self {
         Self {
             base,
-            sprite: OnReady::node("AnimatedSprite2D"),
-            health: OnReady::node("Health"),
+            sprite: OnReady::from_node("AnimatedSprite2D"),
+            health: OnReady::from_node("Health"),
             speed: 10.0,
             action_state: ActionState::default(),
-            animation_tree: OnReady::node("AnimationTree"),
-            nav_agent: OnReady::node("NavigationAgent2D"),
-            player: OnReady::node("/root/Level/Player"),
+            animation_tree: OnReady::from_node("AnimationTree"),
+            nav_agent: OnReady::from_node("NavigationAgent2D"),
+            player: OnReady::from_node("/root/Level/Player"),
             alive: true,
         }
     }
